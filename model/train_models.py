@@ -1,30 +1,34 @@
 """
 train_models.py
 ----------------
-Trains 5 classification models on the Breast Cancer Wisconsin (Diagnostic)
-dataset, evaluates them, and saves:
-    - trained model objects (model/*.pkl)
-    - the fitted StandardScaler (model/scaler.pkl)
-    - the list of feature names (model/feature_names.pkl)
-    - test_data.csv (the held-out test split, used by the Streamlit app)
-    - metrics_summary.csv (the comparison table used in README.md)
+Trains 5 classification models on the "Default of Credit Card Clients"
+dataset (UCI Machine Learning Repository) to predict whether a client will
+default on their credit card payment next month.
 
-Dataset: sklearn.datasets.load_breast_cancer
-    - 569 instances (> 500 required)
-    - 30 numeric features (> 12 required)
-    - Binary classification: malignant (0) vs benign (1)
-    This is the same dataset publicly hosted on UCI ML Repository /
-    Kaggle as "Breast Cancer Wisconsin (Diagnostic) Data Set".
+Dataset source: UCI ML Repository
+    "Default of Credit Card Clients Dataset"
+    https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients
+    (Yeh, I. C., & Lien, C. H., 2009)
+
+    - 30,000 instances (>> 500 required)
+    - 23 features (>> 12 required)
+    - Binary target: default.payment.next.month (0 = no default, 1 = default)
+
+Outputs:
+    - trained model objects (model/*.pkl)
+    - fitted StandardScaler (model/scaler.pkl)
+    - feature name list (model/feature_names.pkl)
+    - test_data.csv (held-out test split for the Streamlit app)
+    - metrics_summary.csv (single train/test split metrics)
+    - cv_summary.csv (5-fold cross-validation mean +/- std, for robustness)
 """
 
 import pandas as pd
 import numpy as np
 import pickle
-import json
 from pathlib import Path
 
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
@@ -41,31 +45,42 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 
 # ---------------------------------------------------------------------
-# 1. Load dataset
+# 1. Load and clean the dataset
 # ---------------------------------------------------------------------
-data = load_breast_cancer()
-X = pd.DataFrame(data.data, columns=data.feature_names)
-y = pd.Series(data.target, name="target")  # 0 = malignant, 1 = benign
+raw = pd.read_csv(ROOT / "raw_data.csv")
+
+# Drop the ID column - not a predictive feature, just a row identifier
+raw = raw.drop(columns=["ID"])
+
+# Rename target to something simpler
+raw = raw.rename(columns={"default.payment.next.month": "target"})
+
+X = raw.drop(columns=["target"])
+y = raw["target"]
 
 print(f"Dataset shape: {X.shape[0]} instances, {X.shape[1]} features")
 print(f"Class balance:\n{y.value_counts()}\n")
 
 # ---------------------------------------------------------------------
-# 2. Train / test split
+# 2. Train / test split (stratified, 80/20)
 # ---------------------------------------------------------------------
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y
 )
 
 # ---------------------------------------------------------------------
-# 3. Scale features (fit on train only, then transform both)
+# 3. Scale features (fit on train only)
 # ---------------------------------------------------------------------
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
 # ---------------------------------------------------------------------
-# 4. Save test data (raw, unscaled features + true label) for the app
+# 4. Save a manageable test_data.csv for the Streamlit app
+#    (Streamlit Community Cloud free tier has limited resources, so we
+#    keep the full 6000-row test split - still well within free-tier limits
+#    for a CSV upload widget, but noted here in case a smaller sample is
+#    preferred for faster demo loads.)
 # ---------------------------------------------------------------------
 test_df = X_test.copy()
 test_df["target"] = y_test.values
@@ -74,18 +89,25 @@ print(f"Saved test_data.csv with {test_df.shape[0]} rows")
 
 # ---------------------------------------------------------------------
 # 5. Define models
+#    Decision Tree is depth-constrained (max_depth=6) to prevent the
+#    severe overfitting an unconstrained tree shows on this dataset.
 # ---------------------------------------------------------------------
 models = {
     "Logistic Regression": LogisticRegression(max_iter=5000, random_state=RANDOM_STATE),
-    "Decision Tree": DecisionTreeClassifier(random_state=RANDOM_STATE),
-    "kNN": KNeighborsClassifier(n_neighbors=5),
+    "Decision Tree": DecisionTreeClassifier(max_depth=6, min_samples_leaf=20, random_state=RANDOM_STATE),
+    "kNN": KNeighborsClassifier(n_neighbors=15),
     "Naive Bayes": GaussianNB(),
-    "Random Forest (Ensemble)": RandomForestClassifier(n_estimators=200, random_state=RANDOM_STATE),
+    "Random Forest (Ensemble)": RandomForestClassifier(
+        n_estimators=300, max_depth=10, random_state=RANDOM_STATE, n_jobs=-1
+    ),
 }
 
 results = []
+cv_results = []
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
 
 for name, model in models.items():
+    # --- single-split metrics (used for the app + main comparison table) ---
     model.fit(X_train_scaled, y_train)
     y_pred = model.predict(X_test_scaled)
     y_proba = model.predict_proba(X_test_scaled)[:, 1]
@@ -102,13 +124,22 @@ for name, model in models.items():
     results.append(metrics)
     print(name, metrics)
 
+    # --- 5-fold cross-validation on the full (scaled) dataset for robustness ---
+    X_full_scaled = scaler.transform(X)  # reuse scaler fit on training split
+    cv_f1 = cross_val_score(model, X_full_scaled, y, cv=cv, scoring="f1", n_jobs=-1)
+    cv_results.append({
+        "ML Model Name": name,
+        "CV F1 Mean": round(cv_f1.mean(), 4),
+        "CV F1 Std": round(cv_f1.std(), 4),
+    })
+
     # Save trained model
     fname = name.lower().replace(" ", "_").replace("(", "").replace(")", "")
     with open(HERE / f"{fname}.pkl", "wb") as f:
         pickle.dump(model, f)
 
 # ---------------------------------------------------------------------
-# 6. Save scaler + feature names (needed by the app to preprocess uploads)
+# 6. Save scaler + feature names
 # ---------------------------------------------------------------------
 with open(HERE / "scaler.pkl", "wb") as f:
     pickle.dump(scaler, f)
@@ -117,9 +148,15 @@ with open(HERE / "feature_names.pkl", "wb") as f:
     pickle.dump(list(X.columns), f)
 
 # ---------------------------------------------------------------------
-# 7. Save metrics summary (used to build the README comparison table)
+# 7. Save summaries
 # ---------------------------------------------------------------------
 results_df = pd.DataFrame(results)
 results_df.to_csv(ROOT / "metrics_summary.csv", index=False)
-print("\nFinal comparison table:\n")
+
+cv_df = pd.DataFrame(cv_results)
+cv_df.to_csv(ROOT / "cv_summary.csv", index=False)
+
+print("\nFinal comparison table (single 80/20 split):\n")
 print(results_df.to_string(index=False))
+print("\n5-fold cross-validation F1 (mean +/- std):\n")
+print(cv_df.to_string(index=False))

@@ -1,0 +1,6 @@
+ML Model Name,CV F1 Mean,CV F1 Std
+Logistic Regression,0.3599,0.0068
+Decision Tree,0.454,0.0215
+kNN,0.4361,0.006
+Naive Bayes,0.4953,0.0204
+Random Forest (Ensemble),0.4679,0.0041

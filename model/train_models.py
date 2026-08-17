@@ -92,16 +92,16 @@ print(f"Saved test_data.csv with {test_df.shape[0]} rows")
 #    Decision Tree is depth-constrained (max_depth=6) to prevent the
 #    severe overfitting an unconstrained tree shows on this dataset.
 # ---------------------------------------------------------------------
+
 models = {
     "Logistic Regression": LogisticRegression(max_iter=5000, random_state=RANDOM_STATE),
-    "Decision Tree": DecisionTreeClassifier(max_depth=6, min_samples_leaf=20, random_state=RANDOM_STATE),
+    "Decision Tree": DecisionTreeClassifier(max_depth=4, min_samples_leaf=20, random_state=RANDOM_STATE),
     "kNN": KNeighborsClassifier(n_neighbors=15),
     "Naive Bayes": GaussianNB(),
     "Random Forest (Ensemble)": RandomForestClassifier(
-        n_estimators=300, max_depth=10, random_state=RANDOM_STATE, n_jobs=-1
+        n_estimators=500, max_depth=10, random_state=RANDOM_STATE, n_jobs=-1
     ),
 }
-
 results = []
 cv_results = []
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)

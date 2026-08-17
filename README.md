@@ -33,8 +33,8 @@ The held-out test split (6,000 rows, 20% of the data) is saved as
 
 ## c. GitHub Repository Link
 
-> **TODO:** Replace with your actual GitHub repo link, e.g.
-> `https://github.com/<your-username>/credit-card-default-classifier`
+> **TODO:** (https://github.com/CodebyAnandi/ml_assignment_2)
+> `https://github.com/CodebyAnandi/ml_assignment_2`
 
 ## d. Models Used
 
@@ -46,45 +46,60 @@ cross-validation (scored on F1, since accuracy is a poor metric on
 imbalanced data) was also run on the full dataset — see the CV table
 below the main comparison table.
 
-**Note on hyperparameters:** the Decision Tree was constrained
-(`max_depth=6, min_samples_leaf=20`) rather than left fully unconstrained.
-An unconstrained tree on this dataset overfits badly (near-perfect
-training accuracy but much worse generalization) — constraining depth
-trades a little training fit for meaningfully better generalization.
+**Hyperparameter tuning process:** the Decision Tree was tested at two
+depths, `max_depth=6` and `max_depth=4` (both with `min_samples_leaf=20`).
+Random Forest was tested at `n_estimators=300` and `n_estimators=500`
+(both with `max_depth=10`). The final values used below are `max_depth=4`
+for Decision Tree and `n_estimators=500` for Random Forest — see the
+tuning note under the tables for what was observed and why these values
+were chosen.
 
 ### Comparison Table (held-out 20% test split, 6,000 rows)
 
 | ML Model Name             | Accuracy | AUC    | Precision | Recall | F1     | MCC    |
 |-----------------------------|:--------:|:------:|:---------:|:------:|:------:|:------:|
 | Logistic Regression        | 0.8077   | 0.7076 | 0.6868    | 0.2396 | 0.3553 | 0.3244 |
-| Decision Tree               | 0.8165   | 0.7479 | 0.6682    | 0.3384 | 0.4492 | 0.3825 |
-| kNN                         | 0.8065   | 0.7327 | 0.6153    | 0.3338 | 0.4328 | 0.3507 |
+| Decision Tree               | 0.8187   | 0.7360 | 0.6626    | 0.3670 | 0.4724 | 0.3974 |
+| kNN                         | 0.8063   | 0.7327 | 0.6147    | 0.3331 | 0.4321 | 0.3499 |
 | Naive Bayes                 | 0.7525   | 0.7249 | 0.4515    | 0.5539 | 0.4975 | 0.3386 |
-| Random Forest (Ensemble)    | 0.8180   | 0.7740 | 0.6686    | 0.3512 | 0.4605 | 0.3908 |
+| Random Forest (Ensemble)    | 0.8177   | 0.7746 | 0.6667    | 0.3512 | 0.4600 | 0.3898 |
 
 ### 5-Fold Cross-Validation (F1 score, full dataset)
 
 | ML Model Name             | CV F1 Mean | CV F1 Std |
 |-----------------------------|:----------:|:---------:|
 | Logistic Regression        | 0.3599     | 0.0068    |
-| Decision Tree               | 0.4540     | 0.0215    |
-| kNN                         | 0.4361     | 0.0059    |
+| Decision Tree               | 0.4602     | 0.0107    |
+| kNN                         | 0.4361     | 0.0060    |
 | Naive Bayes                 | 0.4953     | 0.0204    |
-| Random Forest (Ensemble)    | 0.4672     | 0.0046    |
+| Random Forest (Ensemble)    | 0.4660     | 0.0059    |
 
 *(All values reproducible by running `model/train_models.py`; also saved
 to `metrics_summary.csv` and `cv_summary.csv`.)*
+
+**Hyperparameter tuning note:** the Decision Tree was tested at
+`max_depth=6` and `max_depth=4`. Contrary to the initial expectation that
+a shallower tree would underfit, `max_depth=4` actually performed *better*
+on every metric (F1 rose from 0.4492 to 0.4724, MCC from 0.3825 to 0.3974)
+and was substantially more stable across cross-validation folds (std
+dropped from 0.0215 to 0.0107). This suggests `max_depth=6` still had some
+residual overfitting despite already being constrained — `max_depth=4`
+sits closer to the actual bias-variance sweet spot for this dataset.
+Random Forest was also tested at `n_estimators=300` vs `500`; performance
+was essentially unchanged (MCC 0.3908 → 0.3898), showing 300 trees was
+already enough for the ensemble average to stabilize — more trees only
+added compute cost with no real benefit.
 
 ### Observations
 
 | ML Model Name             | Observation about model performance |
 |-----------------------------|--------------------------------------|
 | Logistic Regression        | Highest accuracy-looking result at a glance (80.8%), but this is misleading: recall is only 0.24, meaning it misses roughly 3 out of 4 actual defaulters. A linear boundary struggles to separate the classes here, and the model defaults to predicting "no default" for most borderline cases — a direct consequence of the class imbalance (78% of clients don't default). |
-| Decision Tree               | Once depth-constrained, performs solidly and stably (low CV std of 0.0215 relative to its mean). Captures non-linear repayment-history patterns (e.g., specific `PAY_0` thresholds) that a linear model misses, roughly doubling recall over Logistic Regression. |
+| Decision Tree               | Strongest tree-based result after tuning `max_depth=4` — now has the **highest MCC (0.3974) of all five models**, and the most stable cross-validation performance among the non-linear models (std 0.0107). Captures non-linear repayment-history patterns (e.g., specific `PAY_0` thresholds) that Logistic Regression misses, while staying simple enough to avoid the overfitting seen at deeper settings. |
 | kNN                          | Middling performance across the board. Distance-based similarity works reasonably on scaled features, but doesn't clearly outperform simpler models here, suggesting the decision boundary isn't primarily about local neighborhoods in feature space. |
 | Naive Bayes                  | Lowest accuracy (75.3%) but **highest F1 (0.4975) and highest recall (0.55)** of all five models — it catches more actual defaulters than any other model, at the cost of more false alarms (lower precision, 0.45). Its independence assumption is technically wrong here (bill amounts across months are highly correlated), but this apparently biases it toward flagging risk more readily, which is arguably desirable in a credit-risk context where missing a defaulter is costlier than a false alarm. |
-| Random Forest (Ensemble)    | Best on Accuracy, AUC (0.774), and MCC (0.3908) — the most balanced performer overall, benefiting from averaging many trees to reduce the variance a single Decision Tree shows. Also has the most stable cross-validation score (std of only 0.0046). |
-| **Overall Winner for this dataset** | **Depends on the business objective.** By MCC/AUC/overall balance, **Random Forest** is the strongest general-purpose model. However, if the priority is catching as many actual defaulters as possible (a common real-world priority in credit risk, since missed defaults are costly), **Naive Bayes** — with its far higher recall — is arguably the better practical choice despite a lower accuracy. This is a case where accuracy alone would give a misleading picture of the "best" model. |
+| Random Forest (Ensemble)    | Best on AUC (0.7746) and most stable overall (lowest CV std, 0.0059), but after tuning, no longer the top MCC — the tuned Decision Tree now edges it out (0.3974 vs 0.3898), suggesting the extra complexity of averaging 500 trees isn't buying much over a single well-tuned tree on this dataset. |
+| **Overall Winner for this dataset** | **Depends on the business objective.** By **MCC**, the tuned **Decision Tree** is now the strongest single model (0.3974). By **AUC and ranking stability**, **Random Forest** is still the most reliable general-purpose choice. By **recall** — arguably the most important metric for credit risk, since missing a defaulter is costlier than a false alarm — **Naive Bayes** is clearly the best, catching 55% of actual defaulters versus roughly a third for the other non-linear models. This is a case where accuracy alone would give a misleading picture, and "best model" genuinely depends on what the bank is optimizing for. |
 
 ## Project Structure
 
@@ -135,8 +150,12 @@ streamlit run app.py
 - This is historical data from Taiwan (2005) — repayment behavior and
   credit norms may not generalize to other regions or time periods.
 - Class imbalance (~22% default rate) was addressed only through metric
-  choice (F1, MCC over raw accuracy); techniques like class weighting or
-  SMOTE resampling were not applied and could likely improve recall further.
+  choice (F1, MCC over raw accuracy) and hyperparameter tuning; techniques
+  like class weighting or SMOTE resampling were not applied and could
+  likely improve recall further, especially for Logistic Regression.
 - A single 80/20 split was used for the main comparison table; the 5-fold
-  CV results show some variation (particularly for Decision Tree and Naive
-  Bayes), so reported metrics should be read as estimates, not exact values.
+  CV results show some variation (particularly for Naive Bayes), so
+  reported metrics should be read as estimates, not exact values.
+- Hyperparameter tuning here was manual (testing 2 values per parameter),
+  not an exhaustive grid search — a full `GridSearchCV` sweep could
+  potentially find better settings than what was tested.

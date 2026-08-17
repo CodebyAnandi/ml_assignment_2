@@ -142,7 +142,7 @@ streamlit run app.py
 
 ## Live Streamlit App Link
 
-> **TODO:** Replace with your deployed app URL, e.g.
+> **TODO:** (https://anandi-sheladiya-ml-assignment-2.streamlit.app/)
 > `https://<your-app-name>.streamlit.app`
 
 ## Limitations

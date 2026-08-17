@@ -66,8 +66,18 @@ with st.sidebar:
              "Use the bundled test_data.csv if you don't have your own.",
     )
 
+    st.markdown("Don't have a test file?")
+    with open(Path(__file__).resolve().parent / "test_data.csv", "rb") as f:
+        st.download_button(
+            label="⬇️ Download sample test_data.csv",
+            data=f,
+            file_name="test_data.csv",
+            mime="text/csv",
+        )
+
     st.markdown("---")
     model_choice = st.selectbox("Evaluate with this model", list(models.keys()))
+
     st.caption(f"Active model: **{model_choice}**")
 
     st.markdown("---")
